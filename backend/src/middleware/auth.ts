@@ -22,7 +22,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as AdminPayload;
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as unknown as AdminPayload;
     req.admin = payload;
     next();
   } catch {
