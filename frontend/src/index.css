@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  #root { min-height: 100vh; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary to-primary-bright text-white font-semibold px-5 py-2.5 rounded-lg
+           shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]
+           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 cursor-pointer;
+  }
+  .btn-ghost {
+    @apply border border-border text-muted hover:text-white hover:border-primary/50
+           px-5 py-2.5 rounded-lg transition-all duration-200 cursor-pointer;
+  }
+  .btn-danger {
+    @apply border border-red-800/60 text-red-400 hover:bg-red-900/30
+           px-5 py-2.5 rounded-lg transition-all duration-200 cursor-pointer;
+  }
+  .card {
+    @apply bg-surface border border-border rounded-xl p-5;
+  }
+  .input {
+    @apply w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-white
+           placeholder:text-muted focus:outline-none focus:border-primary transition-colors;
+  }
+  .badge-scheduled {
+    @apply bg-primary/20 text-primary border border-primary/30 text-xs px-2 py-0.5 rounded-full;
+  }
+  .badge-completed {
+    @apply bg-muted/20 text-muted border border-muted/30 text-xs px-2 py-0.5 rounded-full;
+  }
+  .badge-cancelled {
+    @apply bg-red-900/30 text-red-400 border border-red-800/40 text-xs px-2 py-0.5 rounded-full;
+  }
+}
