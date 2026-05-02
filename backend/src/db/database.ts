@@ -2,7 +2,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import path from 'path';
 import { runSchema } from './schema';
 
-const DB_PATH = path.join(__dirname, '../../data/barbershop.db');
+const DB_PATH = process.env.DB_PATH ?? path.join(__dirname, '../../data/barbershop.db');
 
 let _db: BetterSqlite3.Database | null = null;
 
