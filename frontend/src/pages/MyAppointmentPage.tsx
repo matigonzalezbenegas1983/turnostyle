@@ -1,10 +1,10 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import type { Appointment, Service, Barber, Slot } from '../types';
+import type { Appointment, Service, Barber } from '../types';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
 import SlotGrid from '../components/booking/SlotGrid';
 import { BookingProvider, useBooking } from '../context/BookingContext';
 
@@ -15,7 +15,7 @@ function statusBadge(status: string) {
 }
 
 function RescheduleWizard({ appt, phone, onDone }: { appt: Appointment; phone: string; onDone: () => void }) {
-  const { state, setService, setBarber, setDate, setSlot } = useBooking();
+  const { state, setService, setBarber, setDate } = useBooking();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(false);
