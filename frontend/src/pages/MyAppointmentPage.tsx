@@ -51,7 +51,7 @@ function RescheduleWizard({ appt, phone, onDone }: { appt: Appointment; phone: s
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Nuevo servicio</h3>
+        <h3 className="section-label">Nuevo servicio</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {services.map(s => (
             <button key={s.id} onClick={() => setService(s)}
@@ -66,7 +66,7 @@ function RescheduleWizard({ appt, phone, onDone }: { appt: Appointment; phone: s
 
       {state.service && (
         <div>
-          <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Nuevo estilista</h3>
+          <h3 className="section-label">Nuevo estilista</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {barbers.map(b => (
               <button key={b.id} onClick={() => setBarber(b)}
@@ -84,7 +84,7 @@ function RescheduleWizard({ appt, phone, onDone }: { appt: Appointment; phone: s
 
       {state.barber && state.service && (
         <div>
-          <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Nueva fecha</h3>
+          <h3 className="section-label">Nueva fecha</h3>
           <input
             type="date"
             className="input mb-4"
@@ -94,7 +94,7 @@ function RescheduleWizard({ appt, phone, onDone }: { appt: Appointment; phone: s
           />
           {state.date && (
             <>
-              <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Nuevo horario</h3>
+              <h3 className="section-label">Nuevo horario</h3>
               <SlotGrid />
             </>
           )}
@@ -162,7 +162,7 @@ export default function MyAppointmentPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
-      <h1 className="text-2xl font-bold text-white mb-2">Mis Turnos</h1>
+      <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">Mis Turnos</h1>
       <p className="text-muted mb-8">Ingresá tu teléfono para ver y gestionar tus turnos.</p>
 
       <form onSubmit={lookup} className="flex gap-3 mb-8">

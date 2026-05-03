@@ -1,27 +1,37 @@
 import bcrypt from 'bcrypt';
-import { getDb } from './database';
+import { getPool } from './database';
+import { runSchema } from './schema';
 
-export function runSeed(): void {
-  const db = getDb();
+export async function runSeed(): Promise<void> {
+  const pool = getPool();
 
-  const barberCount = (db.prepare('SELECT COUNT(*) as c FROM barbers').get() as { c: number }).c;
-  if (barberCount === 0) {
-    const insert = db.prepare('INSERT INTO barbers (name) VALUES (?)');
-    ['Estilista 1', 'Estilista 2', 'Estilista 3', 'Estilista 4', 'Estilista 5'].forEach(
-      name => insert.run(name)
-    );
+  await runSchema(pool);
+
+  const barberRes = await pool.query('SELECT COUNT(*) AS c FROM barbers');
+  if (parseInt(barberRes.rows[0].c, 10) === 0) {
+    for (const name of ['Estilista 1', 'Estilista 2', 'Estilista 3', 'Estilista 4', 'Estilista 5']) {
+      await pool.query('INSERT INTO barbers (name) VALUES ($1)', [name]);
+    }
     console.log('Seeded 5 barbers');
   }
 
-  const adminCount = (db.prepare('SELECT COUNT(*) as c FROM admins').get() as { c: number }).c;
-  if (adminCount === 0) {
-    const hash = bcrypt.hashSync('admin123', 10);
-    db.prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)').run('admin', hash);
+  const adminRes = await pool.query('SELECT COUNT(*) AS c FROM admins');
+  if (parseInt(adminRes.rows[0].c, 10) === 0) {
+    const hash = await bcrypt.hash('admin123', 10);
+    await pool.query(
+      'INSERT INTO admins (username, password_hash) VALUES ($1, $2)',
+      ['admin', hash]
+    );
     console.log('Seeded admin user (admin / admin123) — change the password!');
   }
 }
 
 if (require.main === module) {
-  runSeed();
-  console.log('Seed complete.');
+  runSeed().then(() => {
+    console.log('Seed complete.');
+    process.exit(0);
+  }).catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
 }

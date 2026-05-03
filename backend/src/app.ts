@@ -27,9 +27,15 @@ app.use('/api/admin', adminRouter);
 
 app.use(errorHandler);
 
-runSeed();
-startCompletionJob();
+async function main() {
+  await runSeed();
+  startCompletionJob();
+  app.listen(PORT, () => {
+    console.log(`Backend corriendo en http://localhost:${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`Backend corriendo en http://localhost:${PORT}`);
+main().catch(err => {
+  console.error('Fatal error al iniciar:', err);
+  process.exit(1);
 });
