@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { getPool } from './database';
 import { runSchema } from './schema';
 
