@@ -5,6 +5,7 @@ import cors from 'cors';
 
 import { runSeed } from './db/seed';
 import { startCompletionJob } from './jobs/completionJob';
+import { startReminderJob } from './jobs/reminderJob';
 import { errorHandler } from './middleware/errorHandler';
 
 import servicesRouter from './routes/services';
@@ -39,7 +40,8 @@ app.listen(PORT, () => {
   runSeed()
     .then(() => {
       startCompletionJob();
-      console.log('Base de datos lista y job iniciado.');
+      startReminderJob();
+      console.log('Base de datos lista y jobs iniciados.');
     })
     .catch(err => {
       console.error('ERROR conectando a la base de datos:', err.message);

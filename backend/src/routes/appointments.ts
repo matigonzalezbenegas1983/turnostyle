@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { getPool } from '../db/database';
 import { isSlotAvailableFromRows, calcEndTime } from '../utils/slots';
 import { todayDate, nowTime } from '../utils/timeUtils';
+import { sendConfirmation, sendCancellation } from '../services/whatsapp';
 
 const router = Router();
 
@@ -69,7 +70,14 @@ router.post('/', async (req: Request, res: Response) => {
     );
 
     await client.query('COMMIT');
-    res.status(201).json(await enrichAppointment(result.rows[0]));
+    const enriched = await enrichAppointment(result.rows[0]);
+    // Confirmación WhatsApp (fire-and-forget)
+    sendConfirmation({
+      ...result.rows[0],
+      service_name: enriched.serviceName as string,
+      barber_name:  enriched.barberName  as string,
+    }).catch(() => { /* ya logueado en whatsapp.ts */ });
+    res.status(201).json(enriched);
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -113,7 +121,7 @@ router.patch('/:id/cancel', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Turno no encontrado' });
     return;
   }
-  const appt = rows[0] as { id: number; customer_phone: string; status: string; date: string; start_time: string };
+  const appt = rows[0] as { id: number; customer_name: string; customer_phone: string; status: string; date: string; start_time: string; end_time: string };
 
   if (appt.customer_phone !== phone?.trim()) {
     res.status(403).json({ error: 'Teléfono incorrecto' });
@@ -129,6 +137,8 @@ router.patch('/:id/cancel', async (req: Request, res: Response) => {
     return;
   }
   await pool.query("UPDATE appointments SET status = 'cancelled' WHERE id = $1", [appt.id]);
+  // Aviso de cancelación WhatsApp (fire-and-forget)
+  sendCancellation(appt).catch(() => { /* ya logueado en whatsapp.ts */ });
   res.json({ message: 'Turno cancelado' });
 });
 

@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getPool } from '../db/database';
 import { requireAuth } from '../middleware/auth';
+import { sendCancellation, sendClosedBroadcast } from '../services/whatsapp';
+import { todayDate } from '../utils/timeUtils';
 
 const router = Router();
 
@@ -59,12 +61,14 @@ router.patch('/appointments/:id/cancel', requireAuth, async (req: Request, res: 
     res.status(404).json({ error: 'Turno no encontrado' });
     return;
   }
-  const appt = rows[0] as { id: number; status: string };
+  const appt = rows[0] as { id: number; status: string; customer_name: string; customer_phone: string; date: string; start_time: string; end_time: string };
   if (appt.status !== 'scheduled') {
     res.status(409).json({ error: 'Solo se pueden cancelar turnos programados' });
     return;
   }
   await pool.query("UPDATE appointments SET status = 'cancelled' WHERE id = $1", [appt.id]);
+  // Aviso WhatsApp (fire-and-forget)
+  sendCancellation(appt).catch(() => { /* ya logueado en whatsapp.ts */ });
   res.json({ message: 'Turno cancelado' });
 });
 
@@ -78,6 +82,51 @@ router.patch('/appointments/:id/complete', requireAuth, async (req: Request, res
   const appt = rows[0] as { id: number };
   await pool.query("UPDATE appointments SET status = 'completed' WHERE id = $1", [appt.id]);
   res.json({ message: 'Turno completado' });
+});
+
+/**
+ * POST /api/admin/notify-closed
+ * Avisa por WhatsApp a todos los clientes con turnos hoy que la barbería no abrirá.
+ * Cancela todos esos turnos automáticamente.
+ * Body opcional: { date: "YYYY-MM-DD" } — por defecto usa hoy.
+ */
+router.post('/notify-closed', requireAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  const targetDate = (req.body as { date?: string }).date ?? todayDate();
+
+  // Traer todos los turnos programados para ese día (con nombres de servicio y barbero)
+  const { rows } = await pool.query(
+    `SELECT a.id, a.customer_name, a.customer_phone,
+            a.date, a.start_time, a.end_time,
+            s.name AS service_name, b.name AS barber_name
+     FROM appointments a
+     JOIN services s ON s.id = a.service_id
+     JOIN barbers  b ON b.id = a.barber_id
+     WHERE a.status = 'scheduled' AND a.date = $1
+     ORDER BY a.start_time ASC`,
+    [targetDate]
+  );
+
+  if (rows.length === 0) {
+    res.json({ message: 'No hay turnos programados para ese día.', sent: 0, cancelled: 0 });
+    return;
+  }
+
+  // Cancelar todos en la BD
+  await pool.query(
+    `UPDATE appointments SET status = 'cancelled'
+     WHERE status = 'scheduled' AND date = $1`,
+    [targetDate]
+  );
+
+  // Enviar broadcast WhatsApp y contar enviados
+  const sent = await sendClosedBroadcast(rows);
+
+  res.json({
+    message: `Aviso de cierre enviado. ${rows.length} turno(s) cancelado(s), ${sent} mensaje(s) enviado(s).`,
+    cancelled: rows.length,
+    sent,
+  });
 });
 
 export default router;

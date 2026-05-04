@@ -43,4 +43,10 @@ export async function runSchema(pool: Pool): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_appt_date_end
       ON appointments(date, end_time);
   `);
+
+  // Agrega columnas de recordatorio WhatsApp (idempotente)
+  await pool.query(`
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_30_sent BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_15_sent BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
 }
