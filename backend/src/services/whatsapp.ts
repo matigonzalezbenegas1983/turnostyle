@@ -28,24 +28,36 @@ function isEnabled(): boolean {
 
 /**
  * Normaliza un número local de Argentina al formato WhatsApp.
- * "1122334455"  → "whatsapp:+541122334455"
- * "0111234567"  → "whatsapp:+54111234567"
- * "+54911..."   → "whatsapp:+54911..."
+ * Los celulares argentinos necesitan el prefijo 9 para WhatsApp:
+ * "3518613656"   → "whatsapp:+5493518613656"
+ * "03518613656"  → "whatsapp:+5493518613656"
+ * "+543518613656"→ "whatsapp:+5493518613656"  (agrega 9 si falta)
+ * "+5493518613656"→"whatsapp:+5493518613656"  (ya correcto)
  */
 function toWA(phone: string): string {
-  let digits = phone.replace(/[^\d]/g, ''); // solo números
-  if (phone.trim().startsWith('+')) digits = phone.trim().replace(/[^\d+]/g, '');
+  const trimmed = phone.trim().replace(/\s/g, '');
 
-  if (phone.trim().startsWith('+')) {
-    return `whatsapp:${phone.trim().replace(/\s/g, '')}`;
-  }
-  // quitar 0 inicial (formato local AR: 011-xxxx-xxxx)
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  // si ya tiene código de país 54
-  if (digits.startsWith('54') && digits.length >= 12) {
+  // Si ya viene con prefijo +
+  if (trimmed.startsWith('+')) {
+    let digits = trimmed.slice(1).replace(/[^\d]/g, '');
+    // +54 sin 9 → agregar 9 (ej: +543518... → +5493518...)
+    if (digits.startsWith('54') && !digits.startsWith('549')) {
+      digits = '549' + digits.slice(2);
+    }
     return `whatsapp:+${digits}`;
   }
-  return `whatsapp:+54${digits}`;
+
+  // Sin prefijo: solo dígitos
+  let digits = trimmed.replace(/[^\d]/g, '');
+  // quitar 0 inicial (formato local AR: 0351...)
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  // si ya tiene código de país 54
+  if (digits.startsWith('54')) {
+    if (!digits.startsWith('549')) digits = '549' + digits.slice(2);
+    return `whatsapp:+${digits}`;
+  }
+  // número local sin código de país → +549
+  return `whatsapp:+549${digits}`;
 }
 
 /** "2026-05-15" → "15/05/2026" */
