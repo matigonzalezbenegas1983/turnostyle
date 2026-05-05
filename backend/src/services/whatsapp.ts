@@ -1,4 +1,5 @@
-import twilio from 'twilio';
+import https from 'https';
+import { URL, URLSearchParams } from 'url';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -21,17 +22,6 @@ function isEnabled(): boolean {
     process.env.TWILIO_AUTH_TOKEN &&
     process.env.TWILIO_WHATSAPP_FROM
   );
-}
-
-let _client: ReturnType<typeof twilio> | null = null;
-function getClient(): ReturnType<typeof twilio> {
-  if (!_client) {
-    _client = twilio(
-      process.env.TWILIO_ACCOUNT_SID!,
-      process.env.TWILIO_AUTH_TOKEN!
-    );
-  }
-  return _client;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -64,11 +54,53 @@ function fmtDate(d: string): string {
   return `${day}/${m}/${y}`;
 }
 
-/** Envía un mensaje y loguea el resultado (fire-and-forget seguro) */
+/**
+ * Llama a la Twilio Messages API usando el módulo https nativo de Node.js.
+ * No depende de ningún paquete npm externo.
+ */
 async function send(to: string, body: string): Promise<void> {
-  const from = process.env.TWILIO_WHATSAPP_FROM!;
-  const msg = await getClient().messages.create({ from, to, body });
-  console.log(`[WhatsApp] ✅ Enviado a ${to} — SID: ${msg.sid}`);
+  const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+  const authToken  = process.env.TWILIO_AUTH_TOKEN!;
+  const from       = process.env.TWILIO_WHATSAPP_FROM!;
+
+  const payload = new URLSearchParams({ From: from, To: to, Body: body }).toString();
+  const auth    = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+  const apiUrl  = new URL(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: apiUrl.hostname,
+        path:     apiUrl.pathname,
+        method:   'POST',
+        headers:  {
+          'Content-Type':   'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(payload),
+          'Authorization':  `Basic ${auth}`,
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const json = JSON.parse(data) as { sid?: string };
+              console.log(`[WhatsApp] ✅ Enviado a ${to} — SID: ${json.sid ?? 'n/a'}`);
+            } catch {
+              console.log(`[WhatsApp] ✅ Enviado a ${to}`);
+            }
+            resolve();
+          } else {
+            reject(new Error(`Twilio HTTP ${res.statusCode}: ${data}`));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 /** Wrapper que nunca lanza (fire-and-forget) */
