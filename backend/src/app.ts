@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
+// Parcha Express 4 para que los errores async pasen al errorHandler automáticamente
+import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 
