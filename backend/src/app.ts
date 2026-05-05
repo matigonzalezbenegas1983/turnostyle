@@ -27,6 +27,16 @@ app.use(express.json());
 app.get('/', (_req, res) => res.json({ status: 'ok', app: 'TurnoStyle API' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// Diagnóstico Twilio (temporal): chequea presencia de env vars sin exponer valores
+app.get('/debug/twilio', (_req, res) => res.json({
+  hasSid:   !!process.env.TWILIO_ACCOUNT_SID,
+  hasToken: !!process.env.TWILIO_AUTH_TOKEN,
+  hasFrom:  !!process.env.TWILIO_WHATSAPP_FROM,
+  sidPrefix:  process.env.TWILIO_ACCOUNT_SID?.slice(0, 4),
+  fromValue:  process.env.TWILIO_WHATSAPP_FROM,
+  enabled: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM),
+}));
+
 app.use('/api/services', servicesRouter);
 app.use('/api/barbers', barbersRouter);
 app.use('/api/appointments', appointmentsRouter);
