@@ -1,23 +1,22 @@
-import { getDb } from '../db/database';
+import { getPool } from '../db/database';
 import { todayDate, nowTime } from '../utils/timeUtils';
 
 export function startCompletionJob(): void {
-  const tick = () => {
-    const db = getDb();
+  const tick = async () => {
+    const pool = getPool();
     const today = todayDate();
     const now = nowTime();
-    const info = db
-      .prepare(
-        `UPDATE appointments SET status = 'completed'
-         WHERE status = 'scheduled'
-           AND (date < ? OR (date = ? AND end_time <= ?))`
-      )
-      .run(today, today, now);
-    if (info.changes > 0) {
-      console.log(`[completionJob] ${info.changes} turno(s) marcado(s) como completado(s)`);
+    const result = await pool.query(
+      `UPDATE appointments SET status = 'completed'
+       WHERE status = 'scheduled'
+         AND (date < $1 OR (date = $1 AND end_time <= $2))`,
+      [today, now]
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      console.log(`[completionJob] ${result.rowCount} turno(s) marcado(s) como completado(s)`);
     }
   };
 
-  tick();
-  setInterval(tick, 60_000);
+  tick().catch(console.error);
+  setInterval(() => tick().catch(console.error), 60_000);
 }

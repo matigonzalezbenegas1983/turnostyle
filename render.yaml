@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: turnostyle-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node dist/app.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        value: turnostyle-secreto-super-largo-2026-cambiar
+      - key: FRONTEND_URL
+        value: https://turnostyle-seven.vercel.app
+      - key: DATABASE_URL
+        sync: false

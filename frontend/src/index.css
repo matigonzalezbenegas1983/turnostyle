@@ -1,43 +1,267 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────
+   Base
+───────────────────────────────────────────── */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    background-color: #070402;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+
   #root { min-height: 100vh; }
+
+  h1, h2, h3, h4 { font-weight: 800; letter-spacing: -0.02em; }
 }
 
+/* ─────────────────────────────────────────────
+   Background layers
+   Place the barbershop photo at:
+   frontend/public/barber-bg.jpg
+───────────────────────────────────────────── */
+.barber-bg-photo {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('/barber-bg.jpg');
+  background-size: cover;
+  background-position: center 35%;
+  opacity: 0.30;
+  /* Slow, subtle parallax feel */
+  will-change: transform;
+}
+
+.barber-bg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(160deg,
+      rgba(7, 4, 2, 0.90) 0%,
+      rgba(10, 6, 2, 0.82) 50%,
+      rgba(7, 4, 2, 0.92) 100%
+    );
+}
+
+/* Trama — dot mesh that adds depth over the photo */
+.barber-bg-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  background-image: radial-gradient(
+    circle,
+    rgba(249, 150, 60, 0.07) 1px,
+    transparent 1px
+  );
+  background-size: 26px 26px;
+  pointer-events: none;
+}
+
+/* ─────────────────────────────────────────────
+   Ambient dunes — auto-animating warm glows
+───────────────────────────────────────────── */
+@keyframes dune-a {
+  0%, 100% { transform: translate(0, 0) scale(1);         opacity: 1;    }
+  33%       { transform: translate(60px, -30px) scale(1.08); opacity: 0.7; }
+  66%       { transform: translate(-40px, 40px) scale(0.95); opacity: 0.9; }
+}
+@keyframes dune-b {
+  0%, 100% { transform: translate(0, 0);          opacity: 1;    }
+  50%       { transform: translate(-70px, -50px); opacity: 0.6;  }
+}
+@keyframes dune-c {
+  0%, 100% { transform: translate(0, 0) scale(1);    opacity: 0.8; }
+  40%       { transform: translate(30px, 60px) scale(1.1); opacity: 1; }
+  80%       { transform: translate(-50px, -20px);    opacity: 0.5; }
+}
+
+.ambient-dune {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+  filter: blur(60px);
+}
+.ambient-dune-1 {
+  width: 55vw; height: 40vh;
+  top: 5%;  left: 5%;
+  background: radial-gradient(ellipse, rgba(249, 115, 22, 0.055) 0%, transparent 70%);
+  animation: dune-a 14s ease-in-out infinite;
+}
+.ambient-dune-2 {
+  width: 40vw; height: 30vh;
+  top: 45%; right: 5%;
+  background: radial-gradient(ellipse, rgba(217, 119, 6, 0.045) 0%, transparent 70%);
+  animation: dune-b 18s ease-in-out infinite;
+}
+.ambient-dune-3 {
+  width: 30vw; height: 25vh;
+  bottom: 10%; left: 30%;
+  background: radial-gradient(ellipse, rgba(251, 146, 60, 0.04) 0%, transparent 70%);
+  animation: dune-c 22s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────
+   Mouse light effect
+───────────────────────────────────────────── */
+.light-effect {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  --mx: 50%;
+  --my: 50%;
+  background:
+    radial-gradient(
+      ellipse 65vw 55vh at var(--mx) var(--my),
+      rgba(249, 115, 22, 0.11) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 28vw 22vh at calc(var(--mx) + 9%) calc(var(--my) - 7%),
+      rgba(251, 191, 36, 0.06) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 20vw 16vh at calc(var(--mx) - 7%) calc(var(--my) + 5%),
+      rgba(217, 119, 6, 0.05) 0%,
+      transparent 50%
+    );
+}
+
+/* ─────────────────────────────────────────────
+   Page content wrapper (above all bg layers)
+───────────────────────────────────────────── */
+.page-content {
+  position: relative;
+  z-index: 10;
+  min-height: 100vh;
+}
+
+/* ─────────────────────────────────────────────
+   Components
+───────────────────────────────────────────── */
 @layer components {
+
+  /* ── Buttons ──────────────────────────── */
   .btn-primary {
-    @apply bg-gradient-to-r from-primary to-primary-bright text-white font-semibold px-5 py-2.5 rounded-lg
-           shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02]
-           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 cursor-pointer;
+    position: relative;
+    overflow: hidden;
+    @apply bg-gradient-to-r from-primary-dim via-primary to-primary-bright
+           text-white font-bold px-6 py-3 rounded-xl
+           shadow-glow-sm hover:shadow-glow-md
+           hover:scale-[1.03] active:scale-[0.98]
+           transition-all duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100
+           cursor-pointer;
   }
+  /* Flash on click */
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .btn-primary:active::after { opacity: 1; transition: opacity 0s; }
+
   .btn-ghost {
-    @apply border border-border text-muted hover:text-white hover:border-primary/50
-           px-5 py-2.5 rounded-lg transition-all duration-200 cursor-pointer;
+    @apply border border-border text-muted hover:text-white hover:border-primary/40
+           hover:bg-primary/5
+           px-6 py-3 rounded-xl transition-all duration-200 cursor-pointer font-semibold;
   }
+
   .btn-danger {
-    @apply border border-red-800/60 text-red-400 hover:bg-red-900/30
-           px-5 py-2.5 rounded-lg transition-all duration-200 cursor-pointer;
+    @apply border border-red-900/60 text-red-400 hover:bg-red-900/25 hover:border-red-700/60
+           px-6 py-3 rounded-xl transition-all duration-200 cursor-pointer font-semibold;
   }
+
+  /* ── Cards ────────────────────────────── */
   .card {
-    @apply bg-surface border border-border rounded-xl p-5;
+    background: rgba(14, 9, 4, 0.78);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    @apply border border-border rounded-2xl p-5;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.55),
+      0 1px 0 rgba(249, 115, 22, 0.07) inset;
+    transition:
+      transform 0.32s cubic-bezier(.22,.61,.36,1),
+      box-shadow 0.32s ease,
+      border-color 0.2s ease;
   }
+  .card:hover {
+    transform: perspective(900px) rotateX(-1.2deg) translateY(-3px);
+    box-shadow:
+      0 22px 60px rgba(0, 0, 0, 0.65),
+      0 0 0 1px rgba(249, 115, 22, 0.18),
+      0 1px 0 rgba(249, 115, 22, 0.12) inset;
+    border-color: rgba(249, 115, 22, 0.22);
+  }
+
+  /* ── Inputs ───────────────────────────── */
   .input {
-    @apply w-full bg-bg border border-border rounded-lg px-4 py-2.5 text-white
-           placeholder:text-muted focus:outline-none focus:border-primary transition-colors;
+    @apply w-full rounded-xl px-4 py-3 text-white font-medium
+           placeholder:text-muted/60
+           focus:outline-none transition-all duration-200;
+    background: rgba(10, 6, 2, 0.70);
+    backdrop-filter: blur(8px);
+    border: 1px solid #2C1E0F;
   }
+  .input:focus {
+    border-color: rgba(249, 115, 22, 0.55);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.10);
+  }
+
+  /* ── Badges ───────────────────────────── */
   .badge-scheduled {
-    @apply bg-primary/20 text-primary border border-primary/30 text-xs px-2 py-0.5 rounded-full;
+    @apply text-xs px-2.5 py-0.5 rounded-full font-semibold;
+    background: rgba(249, 115, 22, 0.15);
+    color: #FB923C;
+    border: 1px solid rgba(249, 115, 22, 0.30);
   }
   .badge-completed {
-    @apply bg-muted/20 text-muted border border-muted/30 text-xs px-2 py-0.5 rounded-full;
+    @apply text-xs px-2.5 py-0.5 rounded-full font-semibold;
+    background: rgba(120, 100, 70, 0.15);
+    color: #9CA3AF;
+    border: 1px solid rgba(120, 100, 70, 0.25);
   }
   .badge-cancelled {
-    @apply bg-red-900/30 text-red-400 border border-red-800/40 text-xs px-2 py-0.5 rounded-full;
+    @apply text-xs px-2.5 py-0.5 rounded-full font-semibold;
+    background: rgba(127, 29, 29, 0.25);
+    color: #F87171;
+    border: 1px solid rgba(127, 29, 29, 0.40);
+  }
+
+  /* ── Section heading ──────────────────── */
+  .section-label {
+    @apply text-xs font-bold uppercase tracking-widest mb-3;
+    color: rgba(249, 115, 22, 0.65);
+    letter-spacing: 0.12em;
   }
 }
+
+/* ─────────────────────────────────────────────
+   Scrollbar
+───────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #2C1E0F; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(249,115,22,0.40); }
+
+/* ─────────────────────────────────────────────
+   Selection
+───────────────────────────────────────────── */
+::selection { background: rgba(249, 115, 22, 0.35); color: #fff; }

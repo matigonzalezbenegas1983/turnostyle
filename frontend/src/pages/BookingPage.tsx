@@ -46,7 +46,7 @@ function BookingWizard() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
       <StepIndicator />
-      <h1 className="text-2xl font-bold text-white mb-6">{titles[state.step]}</h1>
+      <h1 className="text-3xl font-extrabold text-white mb-6 tracking-tight">{titles[state.step]}</h1>
 
       {state.step === 1 && <ServiceSelector />}
       {state.step === 2 && <BarberSelector />}

@@ -1,4 +1,4 @@
-import { getDb } from '../db/database';
+import { getPool } from '../db/database';
 import { timeToMinutes, minutesToTime, addMinutes, todayDate, nowTime } from './timeUtils';
 
 const OPEN_MIN = 9 * 60;   // 09:00
@@ -16,27 +16,12 @@ export interface Slot {
   available: boolean;
 }
 
-export function getAvailableSlots(
-  barberId: number,
-  date: string,
+/** Pure calculation — no DB access */
+export function computeSlots(
+  existing: ExistingAppt[],
   durationMin: number,
-  excludeAppointmentId?: number
+  date: string
 ): Slot[] {
-  const db = getDb();
-
-  let query = `
-    SELECT start_time, end_time FROM appointments
-    WHERE barber_id = ? AND date = ? AND status = 'scheduled'
-  `;
-  const params: (number | string)[] = [barberId, date];
-
-  if (excludeAppointmentId !== undefined) {
-    query += ' AND id != ?';
-    params.push(excludeAppointmentId);
-  }
-
-  const existing = db.prepare(query).all(...params) as ExistingAppt[];
-
   const isToday = date === todayDate();
   const nowMin = isToday ? timeToMinutes(nowTime()) + 5 : 0;
 
@@ -67,14 +52,46 @@ export function getAvailableSlots(
   return slots;
 }
 
-export function isSlotAvailable(
+/** Check availability from already-fetched rows (use this inside transactions) */
+export function isSlotAvailableFromRows(
+  rows: ExistingAppt[],
+  date: string,
+  startTime: string,
+  durationMin: number
+): boolean {
+  return computeSlots(rows, durationMin, date).some(
+    s => s.start === startTime && s.available
+  );
+}
+
+export async function getAvailableSlots(
+  barberId: number,
+  date: string,
+  durationMin: number,
+  excludeAppointmentId?: number
+): Promise<Slot[]> {
+  const pool = getPool();
+  const params: (number | string)[] = [barberId, date];
+  let query = `
+    SELECT start_time, end_time FROM appointments
+    WHERE barber_id = $1 AND date = $2 AND status = 'scheduled'
+  `;
+  if (excludeAppointmentId !== undefined) {
+    params.push(excludeAppointmentId);
+    query += ` AND id != $${params.length}`;
+  }
+  const { rows } = await pool.query(query, params);
+  return computeSlots(rows as ExistingAppt[], durationMin, date);
+}
+
+export async function isSlotAvailable(
   barberId: number,
   date: string,
   startTime: string,
   durationMin: number,
   excludeAppointmentId?: number
-): boolean {
-  const slots = getAvailableSlots(barberId, date, durationMin, excludeAppointmentId);
+): Promise<boolean> {
+  const slots = await getAvailableSlots(barberId, date, durationMin, excludeAppointmentId);
   return slots.some(s => s.start === startTime && s.available);
 }
 

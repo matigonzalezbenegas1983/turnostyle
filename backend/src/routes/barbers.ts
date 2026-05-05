@@ -1,17 +1,18 @@
 import { Router, Request, Response } from 'express';
-import { getDb } from '../db/database';
+import { getPool } from '../db/database';
 import { getAvailableSlots } from '../utils/slots';
 
 const router = Router();
 
-router.get('/', (_req: Request, res: Response) => {
-  const barbers = getDb()
-    .prepare('SELECT id, name FROM barbers WHERE active = 1 ORDER BY id')
-    .all();
-  res.json(barbers);
+router.get('/', async (_req: Request, res: Response) => {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    'SELECT id, name FROM barbers WHERE active = 1 ORDER BY id'
+  );
+  res.json(rows);
 });
 
-router.get('/:id/slots', (req: Request, res: Response) => {
+router.get('/:id/slots', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { date, serviceId } = req.query as { date?: string; serviceId?: string };
 
@@ -20,24 +21,25 @@ router.get('/:id/slots', (req: Request, res: Response) => {
     return;
   }
 
-  const db = getDb();
-  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId) as
-    | { id: number; duration_min: number }
-    | undefined;
-  if (!service) {
+  const pool = getPool();
+  const serviceRes = await pool.query('SELECT * FROM services WHERE id = $1', [serviceId]);
+  if (serviceRes.rows.length === 0) {
     res.status(404).json({ error: 'Servicio no encontrado' });
     return;
   }
+  const service = serviceRes.rows[0] as { id: number; duration_min: number };
 
-  const barber = db.prepare('SELECT id, name FROM barbers WHERE id = ? AND active = 1').get(id) as
-    | { id: number; name: string }
-    | undefined;
-  if (!barber) {
+  const barberRes = await pool.query(
+    'SELECT id, name FROM barbers WHERE id = $1 AND active = 1',
+    [id]
+  );
+  if (barberRes.rows.length === 0) {
     res.status(404).json({ error: 'Estilista no encontrado' });
     return;
   }
+  const barber = barberRes.rows[0] as { id: number; name: string };
 
-  const slots = getAvailableSlots(barber.id, date, service.duration_min);
+  const slots = await getAvailableSlots(barber.id, date, service.duration_min);
   res.json({ barberId: barber.id, date, serviceDuration: service.duration_min, slots });
 });
 

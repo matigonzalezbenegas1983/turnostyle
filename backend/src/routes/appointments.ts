@@ -1,20 +1,27 @@
 import { Router, Request, Response } from 'express';
-import { getDb } from '../db/database';
-import { isSlotAvailable, calcEndTime } from '../utils/slots';
+import type { PoolClient } from 'pg';
+import { getPool } from '../db/database';
+import { isSlotAvailableFromRows, calcEndTime } from '../utils/slots';
 import { todayDate, nowTime } from '../utils/timeUtils';
+import { sendConfirmation, sendCancellation } from '../services/whatsapp';
 
 const router = Router();
 
-function enrichAppointment(appt: Record<string, unknown>) {
-  const db = getDb();
-  const barber = db.prepare('SELECT name FROM barbers WHERE id = ?').get(appt.barber_id) as { name: string } | undefined;
-  const service = db.prepare('SELECT name, duration_min, price_cents FROM services WHERE id = ?').get(appt.service_id) as
-    | { name: string; duration_min: number; price_cents: number }
-    | undefined;
-  return { ...appt, barberName: barber?.name, serviceName: service?.name, serviceDuration: service?.duration_min };
+async function enrichAppointment(appt: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const pool = getPool();
+  const [barberRes, serviceRes] = await Promise.all([
+    pool.query('SELECT name FROM barbers WHERE id = $1', [appt.barber_id]),
+    pool.query('SELECT name, duration_min, price_cents FROM services WHERE id = $1', [appt.service_id]),
+  ]);
+  return {
+    ...appt,
+    barberName: barberRes.rows[0]?.name,
+    serviceName: serviceRes.rows[0]?.name,
+    serviceDuration: serviceRes.rows[0]?.duration_min,
+  };
 }
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const { barberId, serviceId, customerName, customerPhone, date, startTime } = req.body as {
     barberId: number;
     serviceId: number;
@@ -29,75 +36,93 @@ router.post('/', (req: Request, res: Response) => {
     return;
   }
 
-  const db = getDb();
-  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId) as
-    | { id: number; duration_min: number }
-    | undefined;
-  if (!service) {
+  const pool = getPool();
+  const serviceRes = await pool.query('SELECT * FROM services WHERE id = $1', [serviceId]);
+  if (serviceRes.rows.length === 0) {
     res.status(404).json({ error: 'Servicio no encontrado' });
     return;
   }
+  const service = serviceRes.rows[0] as { id: number; duration_min: number };
 
-  const createAppt = db.transaction(() => {
-    if (!isSlotAvailable(Number(barberId), date, startTime, service.duration_min)) {
-      return null;
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const existingRes = await client.query(
+      `SELECT start_time, end_time FROM appointments
+       WHERE barber_id = $1 AND date = $2 AND status = 'scheduled'`,
+      [barberId, date]
+    );
+
+    if (!isSlotAvailableFromRows(existingRes.rows, date, startTime, service.duration_min)) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'El turno ya no está disponible' });
+      return;
     }
-    const endTime = calcEndTime(startTime, service.duration_min);
-    const result = db
-      .prepare(
-        `INSERT INTO appointments (barber_id, service_id, customer_name, customer_phone, date, start_time, end_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(barberId, serviceId, customerName.trim(), customerPhone.trim(), date, startTime, endTime);
-    return db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid) as Record<string, unknown>;
-  });
 
-  const appt = createAppt();
-  if (!appt) {
-    res.status(409).json({ error: 'El turno ya no está disponible' });
-    return;
+    const endTime = calcEndTime(startTime, service.duration_min);
+    const result = await client.query(
+      `INSERT INTO appointments
+         (barber_id, service_id, customer_name, customer_phone, date, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [barberId, serviceId, customerName.trim(), customerPhone.trim(), date, startTime, endTime]
+    );
+
+    await client.query('COMMIT');
+    const enriched = await enrichAppointment(result.rows[0]);
+    // Confirmación WhatsApp (fire-and-forget)
+    sendConfirmation({
+      ...result.rows[0],
+      service_name: enriched.serviceName as string,
+      barber_name:  enriched.barberName  as string,
+    }).catch(() => { /* ya logueado en whatsapp.ts */ });
+    res.status(201).json(enriched);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-  res.status(201).json(enrichAppointment(appt));
 });
 
-router.get('/:id', (req: Request, res: Response) => {
-  const appt = getDb()
-    .prepare('SELECT * FROM appointments WHERE id = ?')
-    .get(req.params.id) as Record<string, unknown> | undefined;
-  if (!appt) {
+router.get('/:id', async (req: Request, res: Response) => {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [req.params.id]);
+  if (rows.length === 0) {
     res.status(404).json({ error: 'Turno no encontrado' });
     return;
   }
-  res.json(enrichAppointment(appt));
+  res.json(await enrichAppointment(rows[0]));
 });
 
-router.post('/lookup', (req: Request, res: Response) => {
+router.post('/lookup', async (req: Request, res: Response) => {
   const { phone } = req.body as { phone: string };
   if (!phone) {
     res.status(400).json({ error: 'phone es requerido' });
     return;
   }
-  const appointments = getDb()
-    .prepare(
-      `SELECT * FROM appointments
-       WHERE customer_phone = ? AND status = 'scheduled'
-       ORDER BY date ASC, start_time ASC`
-    )
-    .all(phone.trim()) as Record<string, unknown>[];
-  res.json(appointments.map(enrichAppointment));
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT * FROM appointments
+     WHERE customer_phone = $1 AND status = 'scheduled'
+     ORDER BY date ASC, start_time ASC`,
+    [phone.trim()]
+  );
+  const enriched = await Promise.all(rows.map(r => enrichAppointment(r)));
+  res.json(enriched);
 });
 
-router.patch('/:id/cancel', (req: Request, res: Response) => {
+router.patch('/:id/cancel', async (req: Request, res: Response) => {
   const { phone } = req.body as { phone: string };
-  const db = getDb();
-  const appt = db.prepare('SELECT * FROM appointments WHERE id = ?').get(req.params.id) as
-    | { id: number; customer_phone: string; status: string; date: string; start_time: string }
-    | undefined;
-
-  if (!appt) {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [req.params.id]);
+  if (rows.length === 0) {
     res.status(404).json({ error: 'Turno no encontrado' });
     return;
   }
+  const appt = rows[0] as { id: number; customer_name: string; customer_phone: string; status: string; date: string; start_time: string; end_time: string };
+
   if (appt.customer_phone !== phone?.trim()) {
     res.status(403).json({ error: 'Teléfono incorrecto' });
     return;
@@ -111,11 +136,13 @@ router.patch('/:id/cancel', (req: Request, res: Response) => {
     res.status(409).json({ error: 'No se puede cancelar un turno que ya comenzó' });
     return;
   }
-  db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(appt.id);
+  await pool.query("UPDATE appointments SET status = 'cancelled' WHERE id = $1", [appt.id]);
+  // Aviso de cancelación WhatsApp (fire-and-forget)
+  sendCancellation(appt).catch(() => { /* ya logueado en whatsapp.ts */ });
   res.json({ message: 'Turno cancelado' });
 });
 
-router.patch('/:id/reschedule', (req: Request, res: Response) => {
+router.patch('/:id/reschedule', async (req: Request, res: Response) => {
   const { phone, barberId, serviceId, date, startTime } = req.body as {
     phone: string;
     barberId: number;
@@ -124,15 +151,17 @@ router.patch('/:id/reschedule', (req: Request, res: Response) => {
     startTime: string;
   };
 
-  const db = getDb();
-  const appt = db.prepare('SELECT * FROM appointments WHERE id = ?').get(req.params.id) as
-    | { id: number; customer_name: string; customer_phone: string; status: string; date: string; start_time: string }
-    | undefined;
-
-  if (!appt) {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT * FROM appointments WHERE id = $1', [req.params.id]);
+  if (rows.length === 0) {
     res.status(404).json({ error: 'Turno no encontrado' });
     return;
   }
+  const appt = rows[0] as {
+    id: number; customer_name: string; customer_phone: string;
+    status: string; date: string; start_time: string;
+  };
+
   if (appt.customer_phone !== phone?.trim()) {
     res.status(403).json({ error: 'Teléfono incorrecto' });
     return;
@@ -147,35 +176,47 @@ router.patch('/:id/reschedule', (req: Request, res: Response) => {
     return;
   }
 
-  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId) as
-    | { id: number; duration_min: number }
-    | undefined;
-  if (!service) {
+  const serviceRes = await pool.query('SELECT * FROM services WHERE id = $1', [serviceId]);
+  if (serviceRes.rows.length === 0) {
     res.status(404).json({ error: 'Servicio no encontrado' });
     return;
   }
+  const service = serviceRes.rows[0] as { id: number; duration_min: number };
 
-  const reschedule = db.transaction(() => {
-    if (!isSlotAvailable(Number(barberId), date, startTime, service.duration_min, appt.id)) {
-      return null;
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const existingRes = await client.query(
+      `SELECT start_time, end_time FROM appointments
+       WHERE barber_id = $1 AND date = $2 AND status = 'scheduled' AND id != $3`,
+      [barberId, date, appt.id]
+    );
+
+    if (!isSlotAvailableFromRows(existingRes.rows, date, startTime, service.duration_min)) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'El nuevo horario no está disponible' });
+      return;
     }
-    const endTime = calcEndTime(startTime, service.duration_min);
-    db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(appt.id);
-    const result = db
-      .prepare(
-        `INSERT INTO appointments (barber_id, service_id, customer_name, customer_phone, date, start_time, end_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(barberId, serviceId, appt.customer_name, appt.customer_phone, date, startTime, endTime);
-    return db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid) as Record<string, unknown>;
-  });
 
-  const newAppt = reschedule();
-  if (!newAppt) {
-    res.status(409).json({ error: 'El nuevo horario no está disponible' });
-    return;
+    const endTime = calcEndTime(startTime, service.duration_min);
+    await client.query("UPDATE appointments SET status = 'cancelled' WHERE id = $1", [appt.id]);
+    const result = await client.query(
+      `INSERT INTO appointments
+         (barber_id, service_id, customer_name, customer_phone, date, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [barberId, serviceId, appt.customer_name, appt.customer_phone, date, startTime, endTime]
+    );
+
+    await client.query('COMMIT');
+    res.json(await enrichAppointment(result.rows[0]));
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-  res.json(enrichAppointment(newAppt));
 });
 
 export default router;
